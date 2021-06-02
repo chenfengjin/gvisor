@@ -56,6 +56,12 @@ type SocketOptionsHandler interface {
 
 	// OnSetReceiveBufferSize is invoked by SO_RCVBUF and SO_RCVBUFFORCE.
 	OnSetReceiveBufferSize(v, oldSz int64) (newSz int64)
+
+	// NotifyOnSetSendBufferSize is invoked when the send buffer size for an
+	// endpoint is changed. The handler disables auto tuning if it is called
+	// from setsockopt(2) and notifies the writers if the send buffer size
+	// is increased.
+	NotifyOnSetSendBufferSize(shouldNotify bool)
 }
 
 // DefaultSocketOptionsHandler is an embeddable type that implements no-op
@@ -96,6 +102,9 @@ func (*DefaultSocketOptionsHandler) HasNIC(int32) bool {
 func (*DefaultSocketOptionsHandler) OnSetSendBufferSize(v int64) (newSz int64) {
 	return v
 }
+
+// NotifyOnSetSendBufferSize implements SocketOptionsHandler.NotifyOnSetSendBufferSize.
+func (*DefaultSocketOptionsHandler) NotifyOnSetSendBufferSize(shouldNotify bool) {}
 
 // OnSetReceiveBufferSize implements SocketOptionsHandler.OnSetReceiveBufferSize.
 func (*DefaultSocketOptionsHandler) OnSetReceiveBufferSize(v, oldSz int64) (newSz int64) {
@@ -636,7 +645,12 @@ func (so *SocketOptions) SetSendBufferSize(sendBufferSize int64, notify bool) {
 	if notify {
 		sendBufferSize = so.handler.OnSetSendBufferSize(sendBufferSize)
 	}
+	oldSndBufSz := so.sendBufferSize
 	so.sendBufferSize = sendBufferSize
+	if notify {
+		shouldNotify := oldSndBufSz < so.sendBufferSize
+		so.handler.NotifyOnSetSendBufferSize(shouldNotify)
+	}
 }
 
 // ReceiveBufferLimits returns the [min, max) range of allowable receive buffer
