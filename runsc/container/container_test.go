@@ -2597,3 +2597,82 @@ func TestRlimitsExec(t *testing.T) {
 		t.Errorf("ulimit result, got: %q, want: %q", got, want)
 	}
 }
+
+// TestCat creates a file and checks that cat generates the expected output.
+func TestCat(t *testing.T) {
+	dir, err := ioutil.TempDir(testutil.TmpDir(), "test-cat")
+	if err != nil {
+		t.Fatalf("ioutil.TempDir() failed: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	source := path.Join(dir, "source")
+	if err := os.MkdirAll(source, 0777); err != nil {
+		t.Fatalf("os.MkdirAll(): %v", err)
+	}
+
+	f, err := os.Create(path.Join(source, "file"))
+	if err != nil {
+		t.Fatalf("os.Create(): %v", err)
+	}
+	content := "test-cat"
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("f.WriteString(): %v", err)
+	}
+	f.Close()
+
+	spec := testutil.NewSpecWithArgs("sleep", "20")
+	conf := testutil.TestConfig(t)
+
+	spec.Mounts = append(spec.Mounts, specs.Mount{
+		Type:        "bind",
+		Destination: source,
+		Source:      source,
+	})
+
+	_, bundleDir, cleanup, err := testutil.SetupContainer(spec, conf)
+	if err != nil {
+		t.Fatalf("error setting up container: %v", err)
+	}
+	defer cleanup()
+
+	args := Args{
+		ID:        testutil.RandomContainerID(),
+		Spec:      spec,
+		BundleDir: bundleDir,
+	}
+
+	cont, err := New(conf, args)
+	if err != nil {
+		t.Fatalf("Creating container: %v", err)
+	}
+	defer cont.Destroy()
+
+	if err := cont.Start(conf); err != nil {
+		t.Fatalf("starting container: %v", err)
+	}
+
+	// Fake stdout through a pipe to capture stdout results.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe(): %v", err)
+	}
+
+	stdout := os.Stdout
+	os.Stdout = w
+	defer func() {
+		os.Stdout = stdout
+	}()
+
+	if err := cont.Cat([]string{path.Join(source, "file")}); err != nil {
+		t.Errorf("error cat from container: %v", err)
+	}
+
+	buf := make([]byte, 1024)
+	if _, err := r.Read(buf); err != nil {
+		t.Fatalf("Read stdout: %v", err)
+	}
+	if got, want := string(buf), content; !strings.Contains(got, want) {
+		t.Errorf("stdout got %s, want %s", buf, content)
+	}
+}

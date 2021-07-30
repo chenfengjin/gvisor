@@ -7,6 +7,7 @@ go_library(
     srcs = [
         "boot.go",
         "capability.go",
+        "cat.go",
         "checkpoint.go",
         "chroot.go",
         "cmd.go",

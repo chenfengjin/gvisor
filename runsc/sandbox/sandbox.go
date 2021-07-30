@@ -981,7 +981,7 @@ func (s *Sandbox) Pause(cid string) error {
 	}
 	defer conn.Close()
 
-	if err := conn.Call(boot.ContMgrPause, nil, nil); err != nil {
+	if err := conn.Call(boot.LifecyclePause, nil, nil); err != nil {
 		return fmt.Errorf("pausing container %q: %v", cid, err)
 	}
 	return nil
@@ -996,8 +996,26 @@ func (s *Sandbox) Resume(cid string) error {
 	}
 	defer conn.Close()
 
-	if err := conn.Call(boot.ContMgrResume, nil, nil); err != nil {
+	if err := conn.Call(boot.LifecycleResume, nil, nil); err != nil {
 		return fmt.Errorf("resuming container %q: %v", cid, err)
+	}
+	return nil
+}
+
+// Cat sends the cat call for a container in the sandbox.
+func (s *Sandbox) Cat(cid string, files []string) error {
+	log.Debugf("Cat sandbox %q", s.ID)
+	conn, err := s.sandboxConnect()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if err := conn.Call(boot.FsCat, &control.CatOpts{
+		Files:       files,
+		FilePayload: urpc.FilePayload{Files: []*os.File{os.Stdout}},
+	}, nil); err != nil {
+		return fmt.Errorf("Cat container %q: %v", cid, err)
 	}
 	return nil
 }
